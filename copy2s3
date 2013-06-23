@@ -1,0 +1,120 @@
+#!/usr/bin/python
+"""
+    Copy updated files to Amazon S3
+    Copyright 2013 by Brian C. Lane <bcl@brianlane.com>
+    All Rights Reserved
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are met:
+
+        * Redistributions of source code must retain the above copyright
+          notice, this list of conditions and the following disclaimer.
+
+        * Redistributions in binary form must reproduce the above copyright
+          notice, this list of conditions and the following disclaimer in the
+          documentation and/or other materials provided with the distribution.
+
+        * Neither the name of the <ORGANIZATION> nor the names of its
+          contributors may be used to endorse or promote products derived from
+          this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+    ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+    LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+    CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+    SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+    BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+    LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+    If you have any questions about this license please email bcl@brianlane.com
+
+    ====
+
+    You will want to modify the BUCKET name before using this.
+"""
+import os
+import sys
+import time
+import socket
+import getpass
+import subprocess
+from subprocess import check_call, call
+
+try:
+    from subprocess import check_output
+except Exception:
+    def check_output(*popenargs, **kwargs):
+        if 'stdout' in kwargs:
+            raise ValueError('stdout argument not allowed, it will be overridden.')
+        process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
+        output, unused_err = process.communicate()
+        retcode = process.poll()
+        if retcode:
+            cmd = kwargs.get("args")
+            if cmd is None:
+                cmd = popenargs[0]
+            raise subprocess.CalledProcessError(retcode, cmd, output=output)
+        return output
+
+YEAR = time.strftime("%Y")
+HOST = socket.gethostname().split(".")[0]
+USER = getpass.getuser()
+BUCKET = "s3://user-%(host)s-%(user)s-photos-%(year)s" % {"host":HOST, "user":USER, "year":YEAR}
+HOME = os.path.expanduser("~")
+LAST_FILE = "%s/.copy2s3_last" % HOME
+LOCK_FILE = "%s/.copy2s3_lock" % HOME
+STALE_LOCK  =  60*60*4
+NOW = time.ctime()
+
+# Is another copy of this already running?
+if os.path.exists(LOCK_FILE):
+    mtime = os.stat(LOCK_FILE).st_mtime
+    if time.time() - mtime > STALE_LOCK:
+        print "Lockfile %s is stale" % LOCK_FILE
+        sys.exit(1)
+    else:
+        sys.exit(0)
+
+try:
+    open(LOCK_FILE, "w").write("")
+    if os.path.exists(LAST_FILE):
+        LAST_TIME = open(LAST_FILE).readline().strip()
+    else:
+        LAST_TIME = NOW
+
+    # Get the list of files created since LAST_TIME
+    new_files = {}
+    for directory in sys.argv[1:]:
+        cmd = ["find", directory, "-type", "f", "-newerct", LAST_TIME]
+        try:
+            files = check_output(cmd)
+            new_files[directory] = files.splitlines()
+        except subprocess.CalledProcessError as e:
+            print("Error %s running %s: %s" % (e.returncode, e.cmd, e.output))
+            sys.exit(1)
+
+    # Use s3cmd put to transfer these. Stop on first error and don't update LAST_FILE
+    for d, f in ((d, f) for d in new_files for f in new_files[d]):
+        file_path = f[len(d):]
+        if file_path[0] == "/":
+            dest = BUCKET+file_path
+        else:
+            dest = BUCKET+"/"+file_path
+        cmd = ["s3cmd", "put", f, dest]
+        print(cmd)
+        try:
+            check_call(cmd)
+        except subprocess.CalledProcessError as e:
+            print("Error %s running %s: %s" % (e.returncode, e.cmd, e.output))
+            sys.exit(1)
+
+    # Update the timestamp for next run
+    open(LAST_FILE, "w").write(NOW)
+finally:
+    # Remove the lockfile
+    os.unlink(LOCK_FILE)
+
