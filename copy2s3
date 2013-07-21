@@ -104,6 +104,9 @@ try:
             dest = BUCKET+file_path
         else:
             dest = BUCKET+"/"+file_path
+        if not os.path.exists(f):
+            print("%s is missing, skipping it" % f)
+            continue
         cmd = ["s3cmd", "put", f, dest]
         print(cmd)
         try:
