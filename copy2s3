@@ -1,7 +1,7 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 """
     Copy updated files to Amazon S3
-    Copyright 2013 by Brian C. Lane <bcl@brianlane.com>
+    Copyright 2013-2019 by Brian C. Lane <bcl@brianlane.com>
     All Rights Reserved
 
     Redistribution and use in source and binary forms, with or without
@@ -42,39 +42,23 @@ import time
 import socket
 import getpass
 import subprocess
-from subprocess import check_call, call
-
-try:
-    from subprocess import check_output
-except Exception:
-    def check_output(*popenargs, **kwargs):
-        if 'stdout' in kwargs:
-            raise ValueError('stdout argument not allowed, it will be overridden.')
-        process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
-        output, unused_err = process.communicate()
-        retcode = process.poll()
-        if retcode:
-            cmd = kwargs.get("args")
-            if cmd is None:
-                cmd = popenargs[0]
-            raise subprocess.CalledProcessError(retcode, cmd)
-        return output
+from subprocess import check_call, check_output
 
 YEAR = time.strftime("%Y")
 HOST = socket.gethostname().split(".")[0]
 USER = getpass.getuser()
-BUCKET = "s3://user-%(host)s-%(user)s-photos-%(year)s" % {"host":HOST, "user":USER, "year":YEAR}
+BUCKET = f"s3://user-{HOST}-{USER}-photos-{YEAR}"
 HOME = os.path.expanduser("~")
-LAST_FILE = "%s/.copy2s3_last" % HOME
-LOCK_FILE = "%s/.copy2s3_lock" % HOME
-STALE_LOCK  =  60*60*4
+LAST_FILE = f"{HOME}/.copy2s3_last" % HOME
+LOCK_FILE = f"{HOME}/.copy2s3_lock" % HOME
+STALE_LOCK = 60*60*4
 NOW = time.ctime()
 
 # Is another copy of this already running?
 if os.path.exists(LOCK_FILE):
     mtime = os.stat(LOCK_FILE).st_mtime
     if time.time() - mtime > STALE_LOCK:
-        print "Lockfile %s is stale" % LOCK_FILE
+        print(f"Lockfile {LOCK_FILE} is stale")
         sys.exit(1)
     else:
         sys.exit(0)
@@ -94,7 +78,7 @@ try:
             files = check_output(cmd)
             new_files[directory] = files.splitlines()
         except subprocess.CalledProcessError as e:
-            print("Error %s running %s: %s" % (e.returncode, e.cmd, e.output))
+            print(f"Error {e.returncode} running {e.cmd}: {e.output}")
             sys.exit(1)
 
     # Use s3cmd put to transfer these. Stop on first error and don't update LAST_FILE
@@ -105,14 +89,14 @@ try:
         else:
             dest = BUCKET+"/"+file_path
         if not os.path.exists(f):
-            print("%s is missing, skipping it" % f)
+            print(f"{f} is missing, skipping it")
             continue
         cmd = ["s3cmd", "put", f, dest]
         print(cmd)
         try:
             check_call(cmd)
         except subprocess.CalledProcessError as e:
-            print("Error %s running %s: %s" % (e.returncode, e.cmd, e.output))
+            print(f"Error {e.returncode} running {e.cmd}: {e.output}")
             sys.exit(1)
 
     # Update the timestamp for next run
@@ -120,4 +104,3 @@ try:
 finally:
     # Remove the lockfile
     os.unlink(LOCK_FILE)
-
