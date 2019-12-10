@@ -49,8 +49,8 @@ HOST = socket.gethostname().split(".")[0]
 USER = getpass.getuser()
 BUCKET = f"s3://user-{HOST}-{USER}-photos-{YEAR}"
 HOME = os.path.expanduser("~")
-LAST_FILE = f"{HOME}/.copy2s3_last" % HOME
-LOCK_FILE = f"{HOME}/.copy2s3_lock" % HOME
+LAST_FILE = f"{HOME}/.copy2s3_last"
+LOCK_FILE = f"{HOME}/.copy2s3_lock"
 STALE_LOCK = 60*60*4
 NOW = time.ctime()
 
@@ -75,7 +75,7 @@ try:
     for directory in sys.argv[1:]:
         cmd = ["find", directory, "-type", "f", "-newerct", LAST_TIME]
         try:
-            files = check_output(cmd)
+            files = check_output(cmd).decode("utf-8")
             new_files[directory] = files.splitlines()
         except subprocess.CalledProcessError as e:
             print(f"Error {e.returncode} running {e.cmd}: {e.output}")
