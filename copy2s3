@@ -73,7 +73,7 @@ try:
     # Get the list of files created since LAST_TIME
     new_files = {}
     for directory in sys.argv[1:]:
-        cmd = ["find", directory, "-type", "f", "-newerct", LAST_TIME]
+        cmd = ["find", "-H", directory, "-type", "f", "-newerct", LAST_TIME]
         try:
             files = check_output(cmd).decode("utf-8")
             new_files[directory] = files.splitlines()
